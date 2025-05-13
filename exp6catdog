@@ -19,19 +19,20 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.layers import BatchNormalization
 
 train_ds = keras.utils.image_dataset_from_directory( 
-    directory '/content/train',
-    labels 'inferred',
+    directory = '/content/train',
+    labels = 'inferred',
     label_mode = 'binary', # Changed to 'binary' 
     batch_size = 32,
     image_size = (256, 256)
 )
 test_ds = keras.utils.image_dataset_from_directory( 
-    directory '/content/test',
-    labels 'inferred',
+    directory = '/content/test',
+    labels = 'inferred',
     label_mode = 'binary', # Changed to 'binary' 
     batch_size = 32,
     image_size = (256, 256)
 )
+
 
 from tensorflow.keras.utils import to_categorical
 def process(image, label):
@@ -63,7 +64,7 @@ model.summary()
 
 
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-history = model.fit(train_ds, epochs=1, validation_data=test_ds)
+history = model.fit(train_ds, epochs=5, validation_data=test_ds)
 
 
 # Plotting Graph accuracy
