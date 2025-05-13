@@ -1,0 +1,99 @@
+import os
+import zipfile
+import shutil
+import random
+from pathlib import Path
+import tensorflow as tf
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Flatten, Dense, Dropout
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import Adam
+
+# --- Step 1: Extract uploaded ZIP file ---
+zip_file = 'dogs-vs-cats.zip'  # Uploaded manually in Jupyter file browser
+extract_path = 'dataset'
+
+if not os.path.exists(extract_path):
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        zip_ref.extractall(extract_path)
+    print(f"✅ Extracted '{zip_file}' to '{extract_path}'")
+else:
+    print(f"ℹ️ '{extract_path}' already exists, skipping extraction.")
+
+# --- Step 2: Organize into train/val with folders for cats/dogs ---
+original_train_dir = os.path.join(extract_path, 'train')
+if not os.path.exists(original_train_dir):
+    # Handle if images are directly inside 'dataset'
+    jpgs = list(Path(extract_path).glob('*.jpg'))
+    os.makedirs(original_train_dir, exist_ok=True)
+    for f in jpgs:
+        shutil.move(str(f), original_train_dir)
+
+train_dir = os.path.join(extract_path, 'train_data')
+val_dir = os.path.join(extract_path, 'val_data')
+
+for category in ['cats', 'dogs']:
+    os.makedirs(os.path.join(train_dir, category), exist_ok=True)
+    os.makedirs(os.path.join(val_dir, category), exist_ok=True)
+
+cat_files = [f for f in os.listdir(original_train_dir) if 'cat' in f]
+dog_files = [f for f in os.listdir(original_train_dir) if 'dog' in f]
+random.shuffle(cat_files)
+random.shuffle(dog_files)
+
+def split_and_copy(files, label):
+    split_idx = int(0.9 * len(files))
+    for i, file in enumerate(files):
+        src = os.path.join(original_train_dir, file)
+        if i < split_idx:
+            dst = os.path.join(train_dir, label, file)
+        else:
+            dst = os.path.join(val_dir, label, file)
+        shutil.copy(src, dst)
+
+split_and_copy(cat_files, 'cats')
+split_and_copy(dog_files, 'dogs')
+
+print("✅ Dataset organized into train/val folders.")
+
+# --- Step 3: Load and train VGG16 model ---
+img_height, img_width = 224, 224
+batch_size = 32
+
+train_datagen = ImageDataGenerator(rescale=1./255, rotation_range=20, zoom_range=0.2, horizontal_flip=True)
+val_datagen = ImageDataGenerator(rescale=1./255)
+
+train_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(img_height, img_width),
+    batch_size=batch_size,
+    class_mode='binary'
+)
+
+val_generator = val_datagen.flow_from_directory(
+    val_dir,
+    target_size=(img_height, img_width),
+    batch_size=batch_size,
+    class_mode='binary'
+)
+
+base_model = VGG16(weights='imagenet', include_top=False, input_shape=(img_height, img_width, 3))
+for layer in base_model.layers:
+    layer.trainable = False
+
+x = Flatten()(base_model.output)
+x = Dense(512, activation='relu')(x)
+x = Dropout(0.5)(x)
+output = Dense(1, activation='sigmoid')(x)
+
+model = Model(inputs=base_model.input, outputs=output)
+model.compile(optimizer=Adam(learning_rate=1e-4),
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+print("🚀 Starting training...")
+model.fit(train_generator, epochs=5, validation_data=val_generator)
+
+model.save('vgg16_dogs_vs_cats.h5')
+print("✅ Model saved as 'vgg16_dogs_vs_cats.h5'")
